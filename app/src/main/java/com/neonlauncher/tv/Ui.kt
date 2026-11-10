@@ -14,6 +14,8 @@ import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -44,13 +46,15 @@ data class Style(
     val glow: Int,
     val glassPct: Int,
     val radius: Float,
-    val showLabel: Boolean
+    val showLabel: Boolean,
+    val zoom: Float
 )
 
 class Tile(ctx: Context) : LinearLayout(ctx) {
     private val icon = ImageView(ctx)
     private val label = TextView(ctx)
-    private var st = Style(0xFF2EA8FF.toInt(), 6, 12, 12f, true)
+    private var st = Style(0xFF2EA8FF.toInt(), 6, 12, 12f, true, 1.18f)
+    var onFocusGained: ((View) -> Unit)? = null
 
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val line = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -79,13 +83,20 @@ class Tile(ctx: Context) : LinearLayout(ctx) {
 
     fun bind(e: AppEntry, style: Style, cellW: Int) {
         st = style
+        animate().cancel()
+        val f = isFocused
+        scaleX = if (f) style.zoom else 1f
+        scaleY = if (f) style.zoom else 1f
+        alpha = if (f) 1f else 0.78f
         val iconSize = (cellW * 0.44f).toInt()
         val lp = LayoutParams(iconSize, iconSize)
         lp.bottomMargin = if (style.showLabel) Ui.ui(5f) else 0
         icon.layoutParams = lp
         icon.setImageDrawable(e.icon)
         label.text = e.label
-        label.visibility = if (style.showLabel) VISIBLE else GONE
+        label.visibility = VISIBLE
+        label.animate().cancel()
+        label.alpha = if (style.showLabel || f) 1f else 0f
         val p = (pad + Ui.u(4f)).toInt()
         setPadding(p, p, p, p)
         invalidate()
@@ -133,8 +144,17 @@ class Tile(ctx: Context) : LinearLayout(ctx) {
 
     override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
-        val s = if (gainFocus) 1.07f else 1f
-        animate().scaleX(s).scaleY(s).translationZ(if (gainFocus) Ui.u(8f) else 0f).setDuration(120).start()
+        val z = if (gainFocus) st.zoom else 1f
+        animate()
+            .scaleX(z)
+            .scaleY(z)
+            .alpha(if (gainFocus) 1f else 0.78f)
+            .translationZ(if (gainFocus) Ui.u(8f) else 0f)
+            .setDuration(220)
+            .setInterpolator(DecelerateInterpolator(1.4f))
+            .start()
+        label.animate().alpha(if (gainFocus || st.showLabel) 1f else 0f).setDuration(200).start()
+        if (gainFocus) onFocusGained?.invoke(this)
         invalidate()
     }
 }

@@ -24,9 +24,13 @@ class Prefs(ctx: Context) {
         get() = int("radius", 12)
         set(v) = put("radius", v)
 
-    var cols: Int
-        get() = int("cols", 6)
-        set(v) = put("cols", v)
+    var size: Int
+        get() = int("size", 150)
+        set(v) = put("size", v)
+
+    var zoom: Int
+        get() = int("zoom", 118)
+        set(v) = put("zoom", v)
 
     var dim: Int
         get() = int("dim", 35)

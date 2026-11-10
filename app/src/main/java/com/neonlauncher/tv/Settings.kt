@@ -133,7 +133,8 @@ class SettingsDialog(
         add(stepRow("Свечение", { prefs.glow }, { prefs.glow = it }, 0, 10, 1, ""))
         add(stepRow("Прозрачность стекла", { prefs.glass }, { prefs.glass = it }, 0, 40, 2, "%"))
         add(stepRow("Скругление", { prefs.radius }, { prefs.radius = it }, 0, 30, 2, ""))
-        add(stepRow("Колонки", { prefs.cols }, { prefs.cols = it }, 4, 8, 1, ""))
+        add(stepRow("Размер плиток", { prefs.size }, { prefs.size = it }, 80, 220, 10, ""))
+        add(stepRow("Увеличение выбранной", { prefs.zoom }, { prefs.zoom = it }, 100, 150, 2, "%"))
         add(stepRow("Затемнение обоев", { prefs.dim }, { prefs.dim = it }, 0, 90, 5, "%"))
         add(SettingRow(context, "Названия приложений", accentNow,
             { if (prefs.labels) "Вкл" else "Выкл" }) {

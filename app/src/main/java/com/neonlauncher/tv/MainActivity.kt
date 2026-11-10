@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -12,37 +13,63 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Отключаем стандартную прокрутку к фокусу: центрирование делаем сами, плавно. */
+class CenterLayoutManager(ctx: Context) : LinearLayoutManager(ctx, HORIZONTAL, false) {
+    override fun requestChildRectangleOnScreen(
+        parent: RecyclerView,
+        child: View,
+        rect: Rect,
+        immediate: Boolean,
+        focusedChildVisible: Boolean
+    ): Boolean = false
+
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun requestChildRectangleOnScreen(
+        parent: RecyclerView,
+        child: View,
+        rect: Rect,
+        immediate: Boolean
+    ): Boolean = false
+}
+
 class AppAdapter(
     private val onClick: (AppEntry) -> Unit,
-    private val onLong: (AppEntry) -> Unit
+    private val onLong: (AppEntry) -> Unit,
+    private val onFocus: (View) -> Unit
 ) : RecyclerView.Adapter<AppAdapter.VH>() {
 
     var items: List<AppEntry> = emptyList()
-    var style = Style(0xFF2EA8FF.toInt(), 6, 12, 12f, true)
+    var style = Style(0xFF2EA8FF.toInt(), 6, 12, 12f, true, 1.18f)
     var cellW = 100
     var cellH = 100
 
     class VH(val tile: Tile) : RecyclerView.ViewHolder(tile)
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH = VH(Tile(parent.context))
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+        val t = Tile(parent.context)
+        t.onFocusGained = onFocus
+        return VH(t)
+    }
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val e = items[position]
         holder.tile.bind(e, style, cellW)
-        holder.tile.layoutParams = RecyclerView.LayoutParams(MATCH, cellH)
+        holder.tile.layoutParams = RecyclerView.LayoutParams(cellW, cellH)
         holder.tile.setOnClickListener { onClick(e) }
         holder.tile.setOnLongClickListener {
             onLong(e)
@@ -58,6 +85,7 @@ class MainActivity : Activity() {
     private lateinit var wallpaper: WallpaperView
     private lateinit var dim: View
     private lateinit var rv: RecyclerView
+    private lateinit var rvLp: FrameLayout.LayoutParams
     private lateinit var clock: TextView
     private lateinit var date: TextView
     private lateinit var netPill: StatusPill
@@ -71,7 +99,8 @@ class MainActivity : Activity() {
 
     private val adapter = AppAdapter(
         onClick = { launch(it) },
-        onLong = { hide(it) }
+        onLong = { hide(it) },
+        onFocus = { centerOn(it) }
     )
 
     private val ticker = object : Runnable {
@@ -101,14 +130,15 @@ class MainActivity : Activity() {
         dim = View(this)
         root.addView(dim, FrameLayout.LayoutParams(MATCH, MATCH))
 
-        val side = Ui.ui(40f)
         val content = LinearLayout(this)
         content.orientation = LinearLayout.VERTICAL
-        content.setPadding(side, Ui.ui(22f), side, 0)
+        content.clipChildren = false
+        content.clipToPadding = false
+        content.setPadding(0, Ui.ui(22f), 0, 0)
 
         val bar = LinearLayout(this)
         bar.orientation = LinearLayout.HORIZONTAL
-        bar.gravity = android.view.Gravity.CENTER_VERTICAL
+        bar.gravity = Gravity.CENTER_VERTICAL
 
         val timeBox = LinearLayout(this)
         timeBox.orientation = LinearLayout.VERTICAL
@@ -135,35 +165,54 @@ class MainActivity : Activity() {
             lp.leftMargin = Ui.ui(8f)
             bar.addView(p, lp)
         }
-        content.addView(bar, LinearLayout.LayoutParams(MATCH, WRAP))
+        val barLp = LinearLayout.LayoutParams(MATCH, WRAP)
+        barLp.leftMargin = Ui.ui(40f)
+        barLp.rightMargin = Ui.ui(40f)
+        content.addView(bar, barLp)
+
+        // лента приложений по центру экрана
+        val rowBox = FrameLayout(this)
+        rowBox.clipChildren = false
+        rowBox.clipToPadding = false
 
         rv = RecyclerView(this)
-        rv.layoutManager = GridLayoutManager(this, 6)
+        rv.layoutManager = CenterLayoutManager(this)
         rv.adapter = adapter
         rv.clipToPadding = false
         rv.clipChildren = false
         rv.itemAnimator = null
-        rv.setHasFixedSize(true)
         rv.overScrollMode = View.OVER_SCROLL_NEVER
-        rv.setPadding(0, Ui.ui(6f), 0, Ui.ui(40f))
-        val lp = LinearLayout.LayoutParams(MATCH, 0, 1f)
-        lp.topMargin = Ui.ui(14f)
-        content.addView(rv, lp)
+        rvLp = FrameLayout.LayoutParams(MATCH, Ui.ui(200f), Gravity.CENTER_VERTICAL)
+        rowBox.addView(rv, rvLp)
+        content.addView(rowBox, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
         root.addView(content, FrameLayout.LayoutParams(MATCH, MATCH))
         setContentView(root)
     }
 
+    private fun centerOn(v: View) {
+        val dx = (v.left + v.width / 2) - (rv.width / 2)
+        if (dx != 0) rv.smoothScrollBy(dx, 0, DecelerateInterpolator(1.4f), 260)
+    }
+
     private fun applyStyle() {
         val accent = Prefs.ACCENTS[prefs.accent].second
-        val style = Style(accent, prefs.glow, prefs.glass, prefs.radius.toFloat(), prefs.labels)
+        val style = Style(
+            accent, prefs.glow, prefs.glass, prefs.radius.toFloat(),
+            prefs.labels, prefs.zoom / 100f
+        )
         dim.setBackgroundColor(Color.argb(prefs.dim * 255 / 100, 0, 0, 0))
-        val cols = prefs.cols
-        (rv.layoutManager as GridLayoutManager).spanCount = cols
-        val gridW = screenW - 2 * Ui.ui(40f)
+
+        val size = Ui.ui(prefs.size.toFloat())
         adapter.style = style
-        adapter.cellW = gridW / cols
-        adapter.cellH = (adapter.cellW * 0.86f).toInt()
+        adapter.cellW = size
+        adapter.cellH = (size * 1.04f).toInt()
+
+        val side = Math.max(0, (screenW - size) / 2)
+        rv.setPadding(side, 0, side, 0)
+        rvLp.height = (adapter.cellH + Ui.u(50f)).toInt()
+        rv.layoutParams = rvLp
+
         adapter.notifyDataSetChanged()
         for (p in listOf(netPill, vpnPill, settingsPill)) {
             p.accent = accent
@@ -208,7 +257,7 @@ class MainActivity : Activity() {
         adapter.notifyDataSetChanged()
         if (firstFill && adapter.items.isNotEmpty()) {
             firstFill = false
-            rv.post { rv.getChildAt(0)?.requestFocus() }
+            rv.post { rv.findViewHolderForAdapterPosition(0)?.itemView?.requestFocus() }
         }
     }
 
@@ -290,7 +339,7 @@ class MainActivity : Activity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        rv.scrollToPosition(0)
+        rv.smoothScrollToPosition(0)
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -303,6 +352,6 @@ class MainActivity : Activity() {
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        rv.scrollToPosition(0)
+        rv.smoothScrollToPosition(0)
     }
 }
